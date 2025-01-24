@@ -26,13 +26,28 @@ impl<'a, PIO: Instance> PioUartTxProgram<'a, PIO> {
     pub fn new(common: &mut Common<'a, PIO>) -> Self {
         let prg = pio_proc::pio_asm!(
             r#"
-                .side_set 1 opt
+            start:
+                wait 0 pin 0        ; Stall until start bit is asserted
+                set x, 7    [10]    ; Preload bit counter, then delay until halfway through
+            bitloop:                ; the first data bit (12 cycles incl wait, set).
+                in pins, 1          ; Shift data bit into ISR
+                jmp x-- bitloop [6] ; Loop 8 times, each loop iteration is 8 cycles
+                
+                mov y, isr		; Cache the 8 bits we have read into Y scratch
+                mov isr, null	; Clear ISR
+                in pins, 1		; Read in remaining bit
+                in null, 7[4]       ; Read 7 zeros so bit is in correct position
 
-                pull       side 1 [7]  ; Assert stop bit, or stall with line in idle state
-                set x, 8   side 0 [7]  ; Preload bit counter, assert start bit for 9 clocks
-            bitloop:                   ; This loop will run 9 times (9n1 UART)
-                out pins, 1            ; Shift 1 bit from OSR to the first OUT pin
-                jmp x-- bitloop   [6]  ; Each loop iteration is 8 cycles.
+                jmp pin good_stop   ; Check stop bit (should be high)
+
+                irq 4 rel           ; Either a framing error or a break. Set a sticky flag,
+                wait 1 pin 0        ; and wait for line to return to idle state.
+                jmp start           ; Don't push data if we didn't see good framing.
+
+            good_stop:
+                push		; Push 9th bit
+                mov isr, y		; Move cached 8 bits back into ISR
+                push		; Push lower 8 bits
             "#
         );
         let prg = common.load_program(&prg.program);
