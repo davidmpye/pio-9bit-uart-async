@@ -6,7 +6,6 @@
 //! Licenced under GNU GPL V3.0 or later (at your discretion)
 #![no_std]
 use core::convert::Infallible;
-
 use embedded_io_async::{ErrorType, Read, Write};
 use fixed::traits::ToFixed;
 
@@ -14,6 +13,7 @@ use embassy_rp::clocks::clk_sys_freq;
 use embassy_rp::gpio::Level;
 use embassy_rp::pio::{Pio, Direction as PioDirection, Common, Config, FifoJoin, Instance, 
     LoadedProgram, PioPin, ShiftDirection, StateMachine, InterruptHandler };
+use embassy_time::{Duration, WithTimeout};
 
 /// This struct represents a uart tx program loaded into pio instruction memory.
 pub struct PioUartTxProgram<'a, PIO: Instance> {
@@ -126,13 +126,17 @@ impl<'a, PIO: Instance> PioUartRxProgram<'a, PIO> {
 /// PIO backed Uart reciever
 pub struct PioUartRx<'a, PIO: Instance, const SM: usize> {
     sm_rx: StateMachine<'a, PIO, SM>,
+    timeout_firstbyte_us: u32,
+    timeout_interbyte_us: u32,
 }
 
 impl<'a, PIO: Instance, const SM: usize> PioUartRx<'a, PIO, SM> {
     /// Configure a pio state machine to use the loaded rx program.
     pub fn new(
         baud: u32,
-        common: &mut Common<'a, PIO>,
+        timeout_firstbyte_us: u32,
+	timeout_interbyte_us: u32,
+	common: &mut Common<'a, PIO>,
         mut sm_rx: StateMachine<'a, PIO, SM>,
         rx_pin: impl PioPin,
         program: &PioUartRxProgram<'a, PIO>,
@@ -154,7 +158,7 @@ impl<'a, PIO: Instance, const SM: usize> PioUartRx<'a, PIO, SM> {
         sm_rx.set_config(&cfg);
         sm_rx.set_enable(true);
 
-        Self { sm_rx }
+        Self { sm_rx, timeout_firstbyte_us, timeout_interbyte_us }
     }
 
     /// Wait for a single u16
@@ -169,16 +173,33 @@ impl<PIO: Instance, const SM: usize> ErrorType for PioUartRx<'_, PIO, SM> {
 
 impl<PIO: Instance, const SM: usize> Read for PioUartRx<'_, PIO, SM> {
     async fn read(&mut self, buf: &mut [u8]) -> Result<usize, Infallible> {
+        //We are a 9 bit uart, so we will need to return 2 bytes for every 9 bit 'read', so if the buffer
+        //is <2, we cannot operate.
         if buf.len() <2 {
             return Ok(0);
         }
+        let firstbyte_timeout = Duration::from_micros(self.timeout_firstbyte_us as u64);
+        let interbyte_timeout = Duration::from_micros(self.timeout_interbyte_us as u64);
+
         let mut i = 0;
         while i < buf.len()/2 {
-            let b = self.read_u16().await;
-	    //Little endian
-            buf[2*i] = (b&0xFF) as u8;	            
-	    buf[2*i + 1] = (b>>8) as u8;
-            i += 1;
+            let timeout = if i == 0 {
+                firstbyte_timeout
+            }
+            else {
+                interbyte_timeout
+            };
+            match self.read_u16().with_timeout(timeout).await {
+                Ok(byte) => {
+                    //Little endian
+                    buf[2*i] = (byte&0xFF) as u8;	            
+                    buf[2*i + 1] = (byte>>8) as u8;
+                    i += 1;
+                }
+                Err(_timeout) => {
+                    return Ok(i*2);
+                }
+            }
         }
         Ok(i*2)
     }

@@ -4,8 +4,9 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-embassy-rp = { version = "0.2.0" }
-embassy-sync = "0.6.0"
+embassy-rp = { version = "0.3.0", features = ["rp2040"] }
+embassy-sync = "0.6.2"
+embassy-time = "0.4.0"
 embedded-io-async = "0.6.1"
 fixed = "1.28.0"
 pio = "0.2.1"
