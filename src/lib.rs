@@ -5,8 +5,6 @@
 //! Modified to 9 bit by David Pye davidmpye@gmail.com
 //! Licenced under GNU GPL V3.0 or later (at your discretion)
 #![no_std]
-use defmt::*;
-
 use core::convert::Infallible;
 
 use embedded_io_async::{ErrorType, Read, Write};
