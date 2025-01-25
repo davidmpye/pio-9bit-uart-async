@@ -5,6 +5,7 @@
 //! Modified to 9 bit by David Pye davidmpye@gmail.com
 //! Licenced under GNU GPL V3.0 or later (at your discretion)
 #![no_std]
+use defmt::*;
 
 use core::convert::Infallible;
 
@@ -26,8 +27,7 @@ impl<'a, PIO: Instance> PioUartTxProgram<'a, PIO> {
     pub fn new(common: &mut Common<'a, PIO>) -> Self {
         let prg = pio_proc::pio_asm!(
             r#"
-                .side_set 1 opt
-
+            .side_set 1 opt
                 pull       side 1 [7]  ; Assert stop bit, or stall with line in idle state
                 set x, 8   side 0 [7]  ; Preload bit counter, assert start bit for 9 clocks
             bitloop:                   ; This loop will run 9 times (9n1 UART)
@@ -105,26 +105,17 @@ impl<'a, PIO: Instance> PioUartRxProgram<'a, PIO> {
             r#"
             start:
                 wait 0 pin 0        ; Stall until start bit is asserted
-                set x, 7    [10]    ; Preload bit counter, then delay until halfway through
+                set x, 8    [10]    ; Preload bit counter, then delay until halfway through
             bitloop:                ; the first data bit (12 cycles incl wait, set).
                 in pins, 1          ; Shift data bit into ISR
-                jmp x-- bitloop [6] ; Loop 8 times, each loop iteration is 8 cycles
-                
-                mov y, isr		    ; Cache the 8 bits we have read into Y scratch
-                mov isr, null	    ; Clear ISR
-                in pins, 1		    ; Read in remaining bit
-                in null, 7[4]       ; Read 7 zeros so bit is in correct position
-
+                jmp x-- bitloop [6] ; Loop 8 more times, each loop iteration is 8 cycles
                 jmp pin good_stop   ; Check stop bit (should be high)
-
                 irq 4 rel           ; Either a framing error or a break. Set a sticky flag,
                 wait 1 pin 0        ; and wait for line to return to idle state.
                 jmp start           ; Don't push data if we didn't see good framing.
-
             good_stop:
-                push		        ; Push 9th bit
-                mov isr, y		    ; Move cached 8 bits back into ISR
-                push		        ; Push lower 8 bits   
+                in null, 7	    ; Feed in 7 zeros to justify the 9 bits
+		push		    ; Push bits bit
              "#
         );
 
@@ -170,7 +161,7 @@ impl<'a, PIO: Instance, const SM: usize> PioUartRx<'a, PIO, SM> {
 
     /// Wait for a single u16
     pub async fn read_u16(&mut self) -> u16 {
-        self.sm_rx.rx().wait_pull().await as u16
+	(self.sm_rx.rx().wait_pull().await >> 16) as u16 & 0x1FF
     }
 }
 
@@ -186,8 +177,9 @@ impl<PIO: Instance, const SM: usize> Read for PioUartRx<'_, PIO, SM> {
         let mut i = 0;
         while i < buf.len()/2 {
             let b = self.read_u16().await;
-            buf[2*i] = (b >> 8) as u8;
-            buf[2*i+1] = (b>>9) as u8 & 0x01; 
+	    //Little endian
+            buf[2*i] = (b&0xFF) as u8;	            
+	    buf[2*i + 1] = (b>>8) as u8;
             i += 1;
         }
         Ok(i*2)
