@@ -192,8 +192,8 @@ impl<PIO: Instance, const SM: usize> Read for PioUartRx<'_, PIO, SM> {
             match self.read_u16().with_timeout(timeout).await {
                 Ok(byte) => {
                     //Little endian
-                    buf[2*i] = (byte&0xFF) as u8;	            
-                    buf[2*i + 1] = (byte>>8) as u8;
+                    buf[2*i] = (byte>>8) as u8;            
+                    buf[2*i + 1] = (byte & 0xFF) as u8;
                     i += 1;
                 }
                 Err(_timeout) => {
