@@ -19,6 +19,7 @@ use embassy_rp::pio::{
     ShiftDirection, StateMachine,
 };
 use embassy_time::{Duration, WithTimeout};
+
 bind_interrupts!(struct Irqs {
     PIO0_IRQ_0 => pio::InterruptHandler<PIO0>;
 });
@@ -29,9 +30,9 @@ pub struct PioUart<'a, const SM: usize> {
 }
 
 impl<'a, const SM: usize> PioUart<'a, SM> {
-    pub fn new<T: PioPin>(
+    pub fn new<T:PioPin, U:PioPin>(
         tx_pin: T,
-        rx_pin: T,
+        rx_pin: U,
         pio: PIO0,
         first_byte_timeout: Duration,
         interbyte_timeout: Duration,
