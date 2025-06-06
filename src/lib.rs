@@ -3,7 +3,8 @@
 //! Based on:  Embassy-RP Pio uart example (Apache licence)
 //! Based on:  Raspberry Pi Foundation PIO uart examples
 //! Modified to 9 bit by David Pye davidmpye@gmail.com
-//! Licenced under GNU GPL V3.0 or later (at your discretion)
+//! Licenced under MIT or Apache-2.0 license as you prefer.
+
 #![no_std]
 use core::convert::Infallible;
 use embedded_io_async::{ErrorType, Read, Write};
