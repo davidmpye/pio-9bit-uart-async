@@ -5,7 +5,7 @@ authors = ["David Pye <davidmpye@gmail.com>"]
 edition = "2021"
 repository = "https://github.com/davidmpye/pio-9bit-uart-async"
 description = "PIO-backed 9-bit UART designed for use with embassy-rp"
-licence = "MIT OR Apache-2.0"
+license = "MIT OR Apache-2.0"
 categories = ["embedded", "no-std"]
 
 [dependencies]
